@@ -1,9 +1,10 @@
+' AVoIP-Scripts: Este script crea y/o renombra pestañas en el Libro Rolls Royce Network assignment
+' basándose en los valores de la columna B de la hoja activa (Rolls Dealers).
+' las nuevas pestañas estarán formateadas con la plantilla de la Plantilla super-oculta.
+
 ' Version: 1.0
 ' Author: carlos.soto@trisonworld.com
 ' Date: 07/09/2023
-' Description: Este script crea y/o renombra pestañas en el Libro Rolls Royce Network assignment
-'              basándose en los valores de la columna B de la hoja activa. ( Rolls Dealers )
-'              las nuevas pestañas estarán formateadas con la plantilla de la Plantilla super-oculta.
 
 Sub CreateTabs()
     ' Declaración de variables

@@ -1,3 +1,9 @@
+"""
+AVoIP-Scripts: Script para cambiar la fuente de varios decodificadores AV over IP.
+
+Este script realiza solicitudes HTTP POST para cambiar las fuentes de varios decodificadores en una red.
+"""
+
 import requests
 import json
 import time
