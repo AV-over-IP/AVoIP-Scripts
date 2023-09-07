@@ -1,0 +1,513 @@
+--[[
+    Plugin:     Viewer Select & Info
+    Version:    1.3.2
+    Category:   UCI
+    Company:    Trison Europe
+    Developer:  Carlos Soto Pedreira
+    Contact:    carlos.soto@trisonworld.com / carlos@carlosmoshu.com
+    Date:       2023-06
+    This plugin is a part of the UCI suit of TRISON.
+    It provides a way to select and update UCI viewers and UCI panels.
+    It also provides a way to get system information and datetime as text controls
+    for just drag and drop them into your design.
+]]
+PluginInfo = {
+    Name = "TRISON World~UCI Viewer Select",
+    Version = "1.3.2",
+    Id = "<76696577657273656c656374><696e74657266616365><5061646461><QSC><Trison><CarlosMoshu>",
+    Description = "UCI Viewer Select",
+    BuildVersion = "1.3.2a_202306",
+    Manufacturer = "TRISON",
+    Model = "User Interface",
+    IsManaged = true,
+    ShowDebug = false,
+    Author = "Carlos Soto Pedreira"
+}
+
+Colors = {
+    ModuleBackground = { 250, 240, 228 },
+    BasicButtonBackground = { 0, 173, 181 },
+    AltButtonBackground = { 155, 205, 210 },
+    ComponentBackground = { 57, 62, 70 },
+    Dark = { 34, 40, 49 },
+    Light = { 238, 238, 238 },
+    StrokeText = { 57, 62, 70 },
+}
+
+PageNames = {
+    "UCI Selector",
+    "System Info",
+    "About"
+}
+
+ControlComponent = {
+    Text = "Text",
+    Button = "Button",
+    Momentary = "Momentary",
+    Header = "Header",
+    Icon = "Icon",
+    ComboBox = "ComboBox",
+    GroupBox = "GroupBox"
+}
+
+PinStyles = {
+    In = "Input",
+    Out = "Output",
+    IO = "Both"
+}
+
+Decorator = {
+    FontFamily = "Montserrat",
+    FontRegular = "Regular",
+    FontBold = "Bold",
+    HeaderSize = 16,
+    ParragrhapSize = 14,
+    CornerRadius = 8,
+    Center = "Center"
+}
+
+PropertyNames = {
+    AutoRefresh = "Enable Auto-Refresh",
+    RefreshTime = "Refresh Time (sec)"
+}
+
+ControlNames = {
+    Versions = "QSC & Lua Versions",
+    Datetime = "System Datetime",
+    UciViewer = "UCI Viewer",
+    UciController = "UCI Controller",
+    InfoUpdateButton = "Info Update",
+    UciUpdateButton = "UCI Update"
+}
+
+Icons = {
+    Checkbox = "Checkbox",
+    Clock = "Clock"
+}
+
+UciPrefix = "Uci~"
+InfoPrefix = "Info~"
+
+PageIx = "page_index"
+
+Int = "integer"
+Bool = "boolean"
+String = "string"
+Enum = "enum"
+Void = "None"
+
+function GetColor(_)
+    return Colors.ModuleBackground
+end
+
+function GetPrettyName(_)
+    return PluginInfo.Manufacturer .. "\r" .. string.gsub(PluginInfo.Description,'%s','_') .. "\rv" .. PluginInfo.Version
+end
+
+function GetProperties()
+    PropertyCollection = {
+        {
+            Name = PropertyNames.AutoRefresh,
+            Type = Bool,
+            Value = true
+        },
+        {
+            Name = PropertyNames.RefreshTime,
+            Type = Int,
+            Value = 1,
+            Min = 1,
+            Max = 60
+        }
+    }
+    return PropertyCollection
+end
+
+function RectifyProperties(props)
+    local time = props[PropertyNames.RefreshTime]
+    local enable = props[PropertyNames.AutoRefresh]
+    time.IsHidden = not enable.Value
+    return props
+end
+
+function GetControls(props)
+    local enableRefresh = props[PropertyNames.AutoRefresh]
+    local infoControls = {
+        ControlNames.Versions,
+        ControlNames.Datetime
+    }
+    local uciControls = {
+        ControlNames.UciViewer,
+        ControlNames.UciController
+    }
+
+    ControlCollection = {}
+
+    for _, _control in ipairs(infoControls) do
+        table.insert(
+            ControlCollection,
+            {
+                Name = _control,
+                ControlType = ControlComponent.Text,
+                PinStyle = PinStyles.Out,
+                Count = 1,
+                UserPin = true
+            }
+        )
+    end
+
+    for _, _control in ipairs(uciControls) do
+        table.insert(
+            ControlCollection,
+            {
+                Name = _control,
+                ControlType = ControlComponent.Text,
+                PinStyle = PinStyles.Out,
+                Count = 1,
+                UserPin = true,
+                DefaultValue = Void
+            }
+        )
+    end
+
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.UciUpdateButton,
+            ControlType = ControlComponent.Button,
+            ButtonType = ControlComponent.Momentary,
+            IconType = ControlComponent.Icon,
+            Icon = Icons.Checkbox,
+            PinStyle = PinStyles.In,
+            Count = 1,
+            UserPin = false
+        }
+    )
+    if not enableRefresh.Boolean then
+        table.insert(
+            ControlCollection,
+            {
+                Name = ControlNames.InfoUpdateButton,
+                ControlType = ControlComponent.Button,
+                ButtonType = ControlComponent.Momentary,
+                IconType = ControlComponent.Icon,
+                Icon = Icons.Clock,
+                PinStyle = PinStyles.In,
+                Count = 1,
+                UserPin = false
+            }
+        )
+    end
+    return ControlCollection
+end
+
+function GetPages()
+    PageCollection = {}
+    for _pageIndex, _ in ipairs(PageNames) do
+        table.insert(
+            PageCollection,
+            {
+                name = PageNames[_pageIndex]
+            }
+        )
+    end
+    return PageCollection
+end
+
+function GetControlLayout(props)
+    local currentPage = PageNames[props[PageIx].Value]
+    local width, height = 600, 200
+    local margin = 10
+    local isAutoRefresh = props[PropertyNames.AutoRefresh].Value
+    Layout, Canvas = {}, {}
+
+    table.insert(
+        Canvas,
+        {
+            Type = ControlComponent.GroupBox,
+            StrokeWidth = 0,
+            CornerRadius = 0,
+            Fill = Colors.ComponentBackground,
+            Position = { 0, 0 },
+            Size = { width, height }
+        }
+    )
+    table.insert(
+        Canvas,
+        {
+            Type = ControlComponent.Header,
+            Text = currentPage,
+            Color = Colors.Light,
+            Font = Decorator.FontFamily,
+            FontSize = Decorator.HeaderSize,
+            FontStyle = Decorator.FontBold,
+            HTextAlign = Decorator.Center,
+            Position = { 0, margin },
+            Size = { width, 24 }
+        }
+    )
+    if currentPage == "UCI Selector" then
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = ControlNames.UciViewer,
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                CornerRadius = Decorator.CornerRadius,
+                HTextAlign = "Left",
+                Position = { margin, margin + 48 },
+                Size = { width / 2 - margin, 24 }
+            }
+        )
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = ControlNames.UciController,
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                HTextAlign = "Left",
+                Position = { margin, margin + 90 },
+                Size = { width / 2 - margin, 24 }
+            }
+        )
+        Layout[ControlNames.UciViewer] = {
+            PrettyName = UciPrefix .. "Viewer",
+            Style = ControlComponent.ComboBox,
+            Font = Decorator.FontFamily,
+            Color = Colors.Dark,
+            FontSize = Decorator.ParragrhapSize,
+            CornerRadius = Decorator.CornerRadius / 2,
+            TextColor = Colors.Light,
+            StrokeWidth = 0,
+            Position = { width / 2 + margin, margin + 48 },
+            Size = { width / 2 - margin * 2, 20 }
+        }
+        Layout[ControlNames.UciController] = {
+            PrettyName = UciPrefix .. "Controller",
+            Style = ControlComponent.ComboBox,
+            Color = Colors.Dark,
+            Font = Decorator.FontFamily,
+            CornerRadius = Decorator.CornerRadius / 2,
+            FontSize = Decorator.ParragrhapSize,
+            TextColor = Colors.Light,
+            StrokeWidth = 0,
+            Position = { width / 2 + margin, margin + 90 },
+            Size = { width / 2 - margin * 2, 20 }
+        }
+        Layout[ControlNames.UciUpdateButton] = {
+            PrettyName = UciPrefix .. "Update",
+            Legend = ControlNames.UciUpdateButton,
+            Style = ControlComponent.Button,
+            CornerRadius = Decorator.CornerRadius,
+            Color = { 0, 138, 145 },
+            UnlinkOffColor = true,
+            OffColor = Colors.BasicButtonBackground,
+            Font = Decorator.FontFamily,
+            Padding = margin / 2,
+            FontSize = Decorator.HeaderSize - 2,
+            TextColor = Colors.StrokeText,
+            IconColor = Colors.StrokeText,
+            StrokeWidth = 2,
+            StrokeColor = Colors.StrokeText,
+            Position = { margin, height - 48 - margin },
+            Size = { width - margin * 2, 48 }
+        }
+    elseif currentPage == "System Info" then
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = ControlNames.Versions,
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                HTextAlign = "Left",
+                Position = { margin, margin + 48 },
+                Size = { width / 2 - margin, 24 }
+            }
+        )
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = ControlNames.Datetime,
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                HTextAlign = "Left",
+                Position = { margin, margin + 90 },
+                Size = { width / 2 - margin, 24 }
+            }
+        )
+        Layout[ControlNames.Versions] = {
+            PrettyName = InfoPrefix .. "Versions",
+            Style = ControlComponent.Text,
+            Font = Decorator.FontFamily,
+            Color = Colors.Dark,
+            FontSize = Decorator.ParragrhapSize,
+            CornerRadius = Decorator.CornerRadius / 2,
+            TextColor = Colors.Light,
+            StrokeWidth = 0,
+            Position = { width / 2 + margin, margin + 48 },
+            Size = { width / 2 - margin * 2, 20 }
+        }
+        Layout[ControlNames.Datetime] = {
+            PrettyName = InfoPrefix .. "Datetime",
+            Style = ControlComponent.Text,
+            Font = Decorator.FontFamily,
+            Color = Colors.Dark,
+            CornerRadius = Decorator.CornerRadius / 2,
+            FontSize = Decorator.ParragrhapSize,
+            FontColor = Colors.Light,
+            StrokeWidth = 0,
+            Position = { width / 2 + margin, margin + 90 },
+            Size = { width / 2 - margin * 2, 20 }
+        }
+        if not isAutoRefresh then
+            Layout[ControlNames.InfoUpdateButton] = {
+                PrettyName = InfoPrefix .. "Update",
+                Legend = "Update System Info",
+                Style = ControlComponent.Button,
+                CornerRadius = Decorator.CornerRadius,
+                Color = { 0, 138, 145 },
+                UnlinkOffColor = true,
+                OffColor = Colors.BasicButtonBackground,
+                Font = Decorator.FontFamily,
+                Padding = margin / 2,
+                FontSize = Decorator.HeaderSize - 2,
+                TextColor = Colors.StrokeText,
+                IconColor = Colors.StrokeText,
+                StrokeWidth = 2,
+                StrokeColor = Colors.StrokeText,
+                Position = { margin, height - 48 - margin },
+                Size = { width - margin * 2, 48 }
+            }
+        end
+    elseif currentPage == "About" then
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = "This is a TRISON World Q-Sys Module",
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                Position = { margin, margin + 48 },
+                Size = { width - margin, 16 }
+            }
+        )
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = "Created by: " .. PluginInfo.Author,
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                Position = { margin, margin + 90 },
+                Size = { width - margin, 16 }
+            }
+        )
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = "Uci Controller and Viewer must have enabled the Script Access to be found",
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                Position = { margin, margin + 132 },
+                Size = { width - margin, 16 }
+            }
+        )
+    end
+    return Layout, Canvas
+end
+
+if Controls then
+    FixedUpdate = Timer.New()
+    AutoRefrehsProperty = Properties[PropertyNames.AutoRefresh]
+    RefreshTimeProperty = Properties[PropertyNames.RefreshTime]
+    InfoUpdateControl = Controls[ControlNames.InfoUpdateButton]
+    UciUpdateControl = Controls[ControlNames.UciUpdateButton]
+    UciControllerControl = Controls[ControlNames.UciController]
+    UciViewerControl = Controls[ControlNames.UciViewer]
+    VersionsControl = Controls[ControlNames.Versions]
+    DatetimeControl = Controls[ControlNames.Datetime]
+
+    local function UpdateSystemInformation(versions, datetime)
+        local time = os.date("%d-%m-%Y %H:%M:%S")
+        local qsc = System.MajorVersion .. "." .. System.MinorVersion
+        local lua = _VERSION
+        versions.String = "QSC " .. qsc .. " & " .. lua
+        datetime.String = time
+    end
+
+    local function FillUciChoices(viewer, controller)
+        local uciViewers, uciControllers = {}, {}
+        local components = Component.GetComponents()
+
+        if #components > 0 then
+            for _, _component in pairs(components) do
+                if _component.Type == "uci_viewer" then
+                    table.insert(uciViewers, _component.Name)
+                elseif _component.Type == "device_controller_proxy" then
+                    table.insert(uciControllers, _component.Name)
+                end
+            end
+            table.sort(uciViewers)
+            table.sort(uciControllers)
+            table.insert(uciViewers, #uciViewers + 1, Void)
+            table.insert(uciControllers, #uciControllers + 1, Void)
+            viewer.Choices = uciViewers
+            controller.Choices = uciControllers
+        end
+    end
+
+    local function UciUpdate()
+        local uciControllerName = UciControllerControl.String
+        local uciViewerName = UciViewerControl.String
+        if uciControllerName == Void or uciViewerName == Void then
+            error("Please select a valid UCI and UCI Viewer")
+            return
+        end
+        Uci.SetUCI(uciViewerName, uciControllerName)
+    end
+
+    InfoUpdateControl.EventHandler = function(push)
+        if push.Boolean then
+            UpdateSystemInformation()
+        end
+    end
+
+    UciUpdateControl.EventHandler = function(push)
+        if push.Boolean then
+            UciUpdate()
+        end
+    end
+
+    if AutoRefrehsProperty.Value then
+        FixedUpdate.EventHandler = function()
+            UpdateSystemInformation(VersionsControl, DatetimeControl)
+        end
+        FixedUpdate:Start(RefreshTimeProperty.Value)
+    end
+
+    function Init()
+        FixedUpdate:Stop()
+        FillUciChoices(UciViewerControl, UciControllerControl)
+        UpdateSystemInformation(VersionsControl, DatetimeControl)
+    end
+
+    Init()
+end

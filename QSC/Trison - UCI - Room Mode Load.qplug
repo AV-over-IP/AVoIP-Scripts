@@ -1,0 +1,570 @@
+--[[
+    Plugin:     Room Modes & Loading Layer
+    Version:    1.0.12
+    Category:   UCI
+    Company:    Trison Europe
+    Developer:  Carlos Soto Pedreira
+    Contact:    carlos.soto@trisonworld.com / carlos@carlosmoshu.com
+    Date:       2023-06
+    This plugin is a part of the UCI suit of TRISON.
+    It provides buttons for room modes and stop room.
+    It provides a control of a loading layer at the UCI.
+    Provides also a meter and label to show the loading progress.
+    You need to create the layer and use one of this component for each page you need.
+    You can set a timer, or pass the events to execute while it is loading.
+]]
+--
+
+PluginInfo = {
+    Name = "TRISON World~UCI Loading Layer",
+    Version = "1.0.12",
+    Id = "<726f6f6d6d6f64656c6f6164><696e74657266616365><5061646461><QSC><Trison><CarlosMoshu>",
+    Description = "UCI Room Mode Load",
+    BuildVersion = "1.0.12a_202306",
+    Manufacturer = "TRISON",
+    Model = "User Interface",
+    IsManaged = true,
+    ShowDebug = false,
+    Author = "Carlos Soto Pedreira"
+}
+
+Colors = {
+    ModuleBackground = {250, 240, 228},
+    BasicButtonBackground = {0, 173, 181},
+    AltButtonBackground = {155, 205, 210},
+    ComponentBackground = {57, 62, 70},
+    Dark = {34, 40, 49},
+    Light = {238, 238, 238},
+    StrokeText = {57, 62, 70}
+}
+
+PageNames = {
+    "Buttons",
+    "LoadingBar",
+    "About"
+}
+
+ControlComponent = {
+    Text = "Text",
+    Button = "Button",
+    Momentary = "Momentary",
+    Toggle = "Toggle",
+    Header = "Header",
+    Icon = "Icon",
+    ComboBox = "ComboBox",
+    GroupBox = "GroupBox",
+    Knob = "Knob"
+}
+
+PinStyles = {
+    In = "Input",
+    Out = "Output",
+    IO = "Both"
+}
+
+Decorator = {
+    FontFamily = "Montserrat",
+    FontRegular = "Regular",
+    FontBold = "Bold",
+    HeaderSize = 16,
+    ParragrhapSize = 14,
+    CornerRadius = 8,
+    Center = "Center"
+}
+
+PropertyNames = {
+    LoadingMode = "Loading Mode",
+    LoadingTime = "Loading Time (sec)",
+    PresetList = "Preset Cuantity",
+    LoadingMessage = "Loading Message",
+    ShutDownMessage = "Shut Down Message"
+}
+
+ControlNames = {
+    EventsStart = "EventStart",
+    EventsStop = "EventStop",
+    ProgressBar = "ProgressBar",
+    InformationText = "InformationText",
+    Layer = "BaseLayer",
+    LoadingLayer = "LoadingLayer",
+    ButtonStartMode = "ButtonStartMode",
+    ButtonStopMode = "ButtonStopMode"
+}
+
+Icons = {
+    Play = "Play",
+    Stop = "Stop"
+}
+
+MaxRoomModes = 5
+
+StartPresetPrefix = "Start~"
+ActionPrefix = "Action~"
+LoadingPrefix = "Loading~"
+LayerPrefix = "Layer~"
+
+PageIx = "page_index"
+
+Int = "integer"
+Bool = "boolean"
+String = "string"
+Enum = "enum"
+Void = "None"
+
+function GetColor(_)
+    return Colors.ModuleBackground
+end -- GetColor
+
+function GetPrettyName(_)
+    return PluginInfo.Manufacturer ..
+        "\r" .. string.gsub(PluginInfo.Description, "%s", "_") .. "\rv" .. PluginInfo.Version
+end
+
+function GetProperties()
+    PropertyCollection = {
+        {
+            Name = PropertyNames.LoadingMode,
+            Type = Enum,
+            Choices = {"Timer", "Events"},
+            Value = "Timer"
+        },
+        {
+            Name = PropertyNames.LoadingTime,
+            Type = Int,
+            Value = 5,
+            Min = 1,
+            Max = 60
+        },
+        {
+            Name = PropertyNames.PresetList,
+            Type = Int,
+            Value = 1,
+            Min = 1,
+            Max = MaxRoomModes
+        },
+        {
+            Name = PropertyNames.LoadingMessage,
+            Type = String,
+            Value = "Loading room, please wait.."
+        }
+    }
+    for i = 2, MaxRoomModes do
+        table.insert(
+            PropertyCollection,
+            {
+                Name = PropertyNames.LoadingMessage .. " " .. i,
+                Type = String,
+                Value = "Loading room in mode " .. i .. ", please wait.."
+            }
+        )
+    end
+    table.insert(
+        PropertyCollection,
+        {
+            Name = PropertyNames.ShutDownMessage,
+            Type = String,
+            Value = "Shutting down, please wait.."
+        }
+    )
+    return PropertyCollection
+end
+
+function RectifyProperties(props)
+    local mode = props[PropertyNames.LoadingMode]
+    local presets = props[PropertyNames.PresetList]
+    local loadingTime = props[PropertyNames.LoadingTime]
+
+    loadingTime.IsHidden = mode.Value == "Events"
+
+    for i = 2, MaxRoomModes do
+        props[PropertyNames.LoadingMessage .. " " .. i].IsHidden = true
+    end
+    if presets.Value > 1 then
+        for i = 2, presets.Value do
+            props[PropertyNames.LoadingMessage .. " " .. i].IsHidden = false
+        end
+    end
+    return props
+end
+
+function GetControls(_)
+    ControlCollection = {}
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.EventsStart,
+            ControlType = ControlComponent.Button,
+            ButtonType = ControlComponent.Momentary,
+            IconType = ControlComponent.Icon,
+            Icon = Icons.Play,
+            PinStyle = PinStyles.In,
+            Count = 1,
+            UserPin = false
+        }
+    )
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.EventsStop,
+            ControlType = ControlComponent.Button,
+            ButtonType = ControlComponent.Momentary,
+            IconType = ControlComponent.Icon,
+            Icon = Icons.Stop,
+            PinStyle = PinStyles.In,
+            Count = 1,
+            UserPin = false
+        }
+    )
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.ProgressBar,
+            ControlType = ControlComponent.Knob,
+            ControlUnit = "Integer",
+            Min = 0,
+            Max = 100,
+            PinStyle = PinStyles.Out,
+            Count = 1,
+            UserPin = true
+        }
+    )
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.InformationText,
+            ControlType = ControlComponent.Text,
+            PinStyle = PinStyles.Out,
+            Count = 1,
+            UserPin = true
+        }
+    )
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.Layer,
+            ControlType = ControlComponent.Button,
+            ButtonType = ControlComponent.Toggle,
+            PinStyle = PinStyles.Out,
+            Count = 1,
+            UserPin = false
+        }
+    )
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.LoadingLayer,
+            ControlType = ControlComponent.Button,
+            ButtonType = ControlComponent.Toggle,
+            PinStyle = PinStyles.Out,
+            Count = 1,
+            UserPin = false
+        }
+    )
+    for i = 1, MaxRoomModes do
+        table.insert(
+            ControlCollection,
+            {
+                Name = ControlNames.ButtonStartMode .. i,
+                ControlType = ControlComponent.Button,
+                ButtonType = ControlComponent.Momentary,
+                PinStyle = PinStyles.IO,
+                Count = 1,
+                UserPin = true
+            }
+        )
+    end
+    table.insert(
+        ControlCollection,
+        {
+            Name = ControlNames.ButtonStopMode,
+            ControlType = ControlComponent.Button,
+            ButtonType = ControlComponent.Momentary,
+            PinStyle = PinStyles.IO,
+            Count = 1,
+            UserPin = true
+        }
+    )
+    return ControlCollection
+end
+
+function GetPages()
+    PageCollection = {}
+    for _pageIndex, _ in ipairs(PageNames) do
+        table.insert(
+            PageCollection,
+            {
+                name = PageNames[_pageIndex]
+            }
+        )
+    end
+    return PageCollection
+end
+
+function GetControlLayout(props)
+    local PresetCount = props[PropertyNames.PresetList].Value
+    local currentPage = PageNames[props["page_index"].Value]
+    local width, height = 600, 200
+    local margin = 10
+    local usableWidth = width - margin * 2
+    Layout, Canvas = {}, {}
+
+    table.insert(
+        Canvas,
+        {
+            Type = ControlComponent.GroupBox,
+            StrokeWidth = 0,
+            CornerRadius = 0,
+            Fill = Colors.ComponentBackground,
+            Position = {0, 0},
+            Size = {width, height}
+        }
+    )
+    table.insert(
+        Canvas,
+        {
+            Type = ControlComponent.Header,
+            Text = currentPage,
+            Color = Colors.Light,
+            Font = Decorator.FontFamily,
+            FontSize = Decorator.HeaderSize,
+            FontStyle = Decorator.FontBold,
+            HTextAlign = Decorator.Center,
+            Position = {0, margin},
+            Size = {width, 24}
+        }
+    )
+    if currentPage == "Buttons" then
+        for i = 1, PresetCount do
+            local x = margin + (usableWidth / PresetCount) * (i - 1)
+            table.insert(
+                Canvas,
+                {
+                    Type = ControlComponent.Text,
+                    Text = "Preset " .. i,
+                    Color = Colors.Light,
+                    Font = Decorator.FontFamily,
+                    FontSize = Decorator.ParragrhapSize,
+                    FontStyle = Decorator.FontRegular,
+                    HTextAlign = Decorator.Center,
+                    Position = {x, margin + 48},
+                    Size = {usableWidth / PresetCount, 20}
+                }
+            )
+            Layout[ControlNames.ButtonStartMode .. i] = {
+                PrettyName = StartPresetPrefix .. "Preset " .. i,
+                Legend = "Start \rMode " .. i,
+                Style = ControlComponent.Button,
+                Color = {0, 138, 145},
+                OffColor = Colors.BasicButtonBackground,
+                UnlinkOffColor = true,
+                Font = Decorator.FontFamily,
+                CornerRadius = Decorator.CornerRadius,
+                StrokeWidth = 2,
+                StrokeColor = Colors.StrokeText,
+                FontSize = Decorator.ParragrhapSize - 2,
+                FontStyle = Decorator.FontBold,
+                TextColor = Colors.StrokeText,
+                Position = {x, margin + 72},
+                Size = {usableWidth / PresetCount, 48}
+            }
+        end
+    elseif currentPage == "LoadingBar" then
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = "Page Layers",
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                Position = {margin, 170},
+                Size = {usableWidth / 2 - 16, 16}
+            }
+        )
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = "Loading Layer",
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                Position = {margin + (usableWidth / 2 - 16), 170},
+                Size = {usableWidth / 2 - 16, 16}
+            }
+        ) -- insert Loading Layer Text
+        Layout[ControlNames.EventsStart] = {
+            PrettyName = ActionPrefix .. "Initialize",
+            Legend = "Initialize",
+            Style = ControlComponent.Button,
+            Color = {0, 138, 145},
+            OffColor = Colors.BasicButtonBackground,
+            UnlinkOffColor = true,
+            Font = Decorator.FontFamily,
+            CornerRadius = Decorator.CornerRadius,
+            FontSize = Decorator.HeaderSize,
+            TextColor = Colors.StrokeText,
+            IconColor = Colors.StrokeText,
+            Position = {margin, margin + 40},
+            Size = {(usableWidth / 2), 40}
+        } -- EventsStart
+        Layout[ControlNames.EventsStop] = {
+            PrettyName = ActionPrefix .. "Shutdown",
+            Legend = "Shutdown",
+            Style = ControlComponent.Button,
+            Color = {0, 138, 145},
+            OffColor = Colors.BasicButtonBackground,
+            UnlinkOffColor = true,
+            Font = Decorator.FontFamily,
+            CornerRadius = Decorator.CornerRadius,
+            FontSize = Decorator.HeaderSize,
+            TextColor = Colors.StrokeText,
+            IconColor = Colors.StrokeText,
+            Position = {(usableWidth / 2) + margin, margin + 40},
+            Size = {(usableWidth / 2), 40}
+        } -- EventsStop
+        Layout[ControlNames.InformationText] = {
+            PrettyName = LoadingPrefix .. "Text",
+            Style = ControlComponent.Text,
+            Color = Colors.Dark,
+            Font = Decorator.FontFamily,
+            FontSize = Decorator.ParragrhapSize,
+            CornerRadius = Decorator.CornerRadius / 2,
+            StrokeWidth = 0,
+            Position = {margin, margin + 90},
+            Size = {usableWidth, 24}
+        } -- InformationText
+        Layout[ControlNames.ProgressBar] = {
+            PrettyName = LoadingPrefix .. "Progress",
+            Style = "Meter",
+            MeterStyle = "Standard",
+            IsReadOnly = true,
+            Font = Decorator.FontFamily,
+            FontSize = Decorator.ParragrhapSize,
+            CornerRadius = Decorator.CornerRadius / 2,
+            StrokeWidth = 0,
+            Position = {margin, margin + 126},
+            Size = {usableWidth, 28}
+        } -- ProgressBar
+
+        Layout[ControlNames.Layer] = {
+            PrettyName = LayerPrefix .. "Base",
+            Style = "Led",
+            Color = Colors.BasicButtonBackground,
+            Position = {margin + (usableWidth / 2) - 16, 170},
+            Size = {16, 16}
+        } -- Layer
+        Layout[ControlNames.LoadingLayer] = {
+            PrettyName = LayerPrefix .. "Loading",
+            Style = "Led",
+            Color = Colors.BasicButtonBackground,
+            Position = {margin + usableWidth - 32, 170},
+            Size = {16, 16}
+        } -- LoadingLayer
+    elseif currentPage == "About" then
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = "This is a TRISON World Q-Sys Module",
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                Position = { margin, margin + 48 },
+                Size = { width - margin, 16 }
+            }
+        )
+        table.insert(
+            Canvas,
+            {
+                Type = ControlComponent.Text,
+                Text = "Created by: " .. PluginInfo.Author,
+                Color = Colors.Light,
+                Font = Decorator.FontFamily,
+                FontSize = Decorator.ParragrhapSize,
+                FontStyle = Decorator.FontRegular,
+                Position = { margin, margin + 90 },
+                Size = { width - margin, 16 }
+            }
+        )
+    end -- currentPage Configure
+    return Layout, Canvas
+end -- GetControlLayout
+
+if Controls and Properties[PropertyNames.LoadingMode].Value == "Timer" then
+    LoadingModeProp = Properties[PropertyNames.LoadingMode].Value
+    ProgressBarControl = Controls[ControlNames.ProgressBar]
+    InfoTextControl = Controls[ControlNames.InformationText]
+    LayerControl = Controls[ControlNames.Layer]
+    LoadingLayerControl = Controls[ControlNames.LoadingLayer]
+
+    LayerControl.Boolean = true
+    LoadingLayerControl.Boolean = false
+
+    Controls[ControlNames.EventsStart].EventHandler = function(event)
+        if not event.Boolean then
+            return
+        end
+        print("Start")
+        if LoadingModeProp == "Timer" then
+            local interval = Properties[PropertyNames.LoadingTime].Value
+            local update = Timer.New()
+
+            ProgressBarControl.Value = 0
+
+            LayerControl.Boolean = false
+            LoadingLayerControl.Boolean = true
+            InfoTextControl.String = Properties[PropertyNames.LoadingMessage].Value
+
+            update.EventHandler = function()
+                local steps = 100 / interval
+                local value = ProgressBarControl.Value
+
+                if value < 100 then
+                    ProgressBarControl.Value = value + steps
+                else
+                    update:Stop()
+                    LayerControl.Boolean = true
+                    LoadingLayerControl.Boolean = false
+                end -- if value < 100
+            end -- update.EventHandler
+            update:Start(1)
+        elseif LoadingModeProp == "Events" then
+        end
+    end
+    Controls[ControlNames.EventsStop].EventHandler = function(event)
+        if not event.Boolean then
+            return
+        end
+        print("Stop")
+        if LoadingModeProp == "Timer" then
+            local interval = Properties[PropertyNames.LoadingTime].Value
+            local update = Timer.New()
+
+            ProgressBarControl.Value = 100
+            LayerControl.Boolean = false
+            LoadingLayerControl.Boolean = true
+            InfoTextControl.String = Properties[PropertyNames.ShutDownMessage].Value
+
+            update.EventHandler = function()
+                local steps = 100 / interval
+                local value = ProgressBarControl.Value
+
+                if value > 0 then
+                    ProgressBarControl.Value = value - steps
+                else
+                    update:Stop()
+                    LayerControl.Boolean = true
+                    LoadingLayerControl.Boolean = false
+                end -- if value > 0
+            end -- update.EventHandler
+            update:Start(1)
+        elseif LoadingModeProp == "Events" then
+        end
+    end
+elseif Controls and Properties[PropertyNames.LoadingMode].Value == "Events" then
+    print("Events")
+end
